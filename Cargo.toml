@@ -1,0 +1,9 @@
+[package]
+name = "httpshare"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.2.0", features = ["cargo"] }
+tokio = "1.41.1"
+warp = "0.3.7"

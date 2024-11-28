@@ -1,0 +1,1 @@
+cargo:rustc-env=MIME_TYPES_GENERATED_PATH=/Users/e/Dropbox/Documents/Code/Rust/httpshare/target/debug/build/mime_guess-d0f78b61f36e946e/out/mime_types_generated.rs
