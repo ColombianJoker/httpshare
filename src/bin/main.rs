@@ -19,6 +19,7 @@ fn main() {
     let star = String::from("*");
     let all = String::from("0.0.0.0");
     let max_threads = 16;
+    let max_reqs_worker = 1024;
 
     // Process command line options and arguments
     let match_result = command!()
@@ -80,7 +81,8 @@ fn main() {
     println!(" done. ]\n");
     
     // Process client connection requests
-    for stream in listener.incoming() {
+    for stream in listener.incoming().take(max_reqs_worker) {
+      // take some requests and shutdown
       let stream = stream.unwrap();
       let fname = filename.clone();
       thread_pool.execute(move || { 
