@@ -2,15 +2,16 @@ use clap::command;
 use clap::Arg;
 use clap::value_parser;
 use std::net::TcpListener;
-// use std::net::ToSocketAddrs;
 use std::net::TcpStream;
-use std::io;
+use std::io::BufReader;
 use std::io::prelude::*;
 use std::fs;
+use std::path::Path;
 use std::thread;
 use std::thread::ThreadId;
-use std::time::Duration;
+use chrono::prelude::*;
 use httpshare::ThreadPool;
+use regex::Regex;
 
 fn main() {
     let default_port = 7878_u16;
@@ -70,15 +71,13 @@ fn main() {
       println!("| Filename: {}", filename);
     }
     let bind_str = format!("{interface}:{port}");
-    // let sock_addr = bind_str.to_socket_addrs().unwrap();
-    // let bind_String = String::from(bind_str);
     
     print!("[ Trying to bind to {bind_str}...");
     let listener = TcpListener::bind(bind_str).unwrap();
-    println!(" done. ]\n");
+    println!(" done. ]");
     print!("[ Creating a thread pool to manage connection requests ...");
     let thread_pool = ThreadPool::new(max_threads);
-    println!(" done. ]\n");
+    println!(" done. ]");
     
     // Process client connection requests
     for stream in listener.incoming().take(max_reqs_worker) {
@@ -94,36 +93,30 @@ fn main() {
 }
 
 fn handle_connection(mut stream: TcpStream, tid: ThreadId, filename: String) {
-  let mut buffer = [0; 10240];
-  let get = b"GET / HTTP/1.1\r\n";
-  let sleep = b"GET /sleep HTTP/1.1\r\n";
-  let notfound_filename = String::from("404.html");
-  let mut sent_filename = String::new();
-  let mut contents = String::new();
-  let mut response = String::new();
-
-  stream.read(&mut buffer).unwrap();
-
-  if buffer.starts_with(get) {
-    contents = fs::read_to_string(filename.clone()).unwrap();
-    response = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}", contents.len(), contents);
-    sent_filename = filename.clone();
-  } else if buffer.starts_with(sleep) {
-    thread::sleep(Duration::from_secs(5)); // wait 5 secs
-    contents = fs::read_to_string(filename.clone()).unwrap();
-    response = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}", contents.len(), contents);
-    sent_filename = filename.clone();
-  } else {
-    contents = fs::read_to_string(notfound_filename.clone()).unwrap();
-    response = format!("HTTP/1.1 404 NOT FOUND\r\nContent-Length: {}\r\n\r\n{}", contents.len(), contents);
-    sent_filename = notfound_filename.clone();
+  // let buffer = [0; 10240];
+  let buf_reader = BufReader::new(&mut stream);
+  let request_line = buf_reader.lines().next().unwrap().unwrap();
+  let re = Regex::new(r"^(.*) (.*) (.*)$").unwrap(); // Capture three words or tokens
+  let captures = re.captures(&request_line).unwrap();
+  let request_pathname = captures.get(2).map_or("", |m| m.as_str());
+    
+  let full_filepath = format!("{}{}", filename, request_pathname);
+  let now_str = Local::now().to_string();
+  #[cfg(feature = "debug")]
+  println!("{tid:?}< {:?} {request_pathname}={full_filepath}", now_str);
+  #[cfg(not(feature = "debug"))]
+  println!("{now_str} {full_filepath}");
+  
+  let mut http_code = "HTTP/1.1 404 NOT FOUND"; // by deafult gives 404
+  let mut file_contents = String::new();
+  
+  if Path::new(&full_filepath).exists() {
+    http_code = "HTTP/1.1 200 OK";              // if requested file exists then 200 OK
+    file_contents = fs::read_to_string(&full_filepath).unwrap(); // load file
   }
-  // if !quiet {
-  //   print!("{tid:?}< Request: {}", String::from_utf8_lossy(&buffer[..])); // report request
-  // }
-  stream.write(response.as_bytes()).unwrap();
-  stream.flush().unwrap();
-  // if !quiet {
-  //   println!("{tid:?}> {} contents ({} bytes) sent.", sent_filename.clone(), contents.len());  // report response
-  // }
+  
+  let content_length = file_contents.len();
+  let http_response = format!("{http_code}\r\nContent-Length: {content_length}\r\n\r\n{file_contents}");
+  
+  stream.write_all(http_response.as_bytes()).unwrap();
 }

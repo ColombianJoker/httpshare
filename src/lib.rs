@@ -48,6 +48,7 @@ impl Drop for ThreadPool {
       self.sender.send(Message::Terminate).unwrap(); // workers pick message at discretion
     }
     for worker in &mut self.workers {
+      #[cfg(feature = "debug")]
       println!("Shutting down worker {}", worker.id);
       if let Some(thread) = worker.thread.take() {
         thread.join().unwrap(); // completes and end
@@ -71,11 +72,13 @@ impl Worker {
         .unwrap();
       match message {
         Message::NewJob(job) => {
-          // println!("Worker {} got a job; executing.", id);
+          #[cfg(feature = "debug")]
+          println!("Worker {} got a job; executing.", id);
           job();
         }
         Message::Terminate => {
-          // println!("Worker {} received message to terminate.", id);
+          #[cfg(feature = "debug")]
+          println!("Worker {} received message to terminate.", id);
           break; // of infinite loop on thread::spawn()
         }
       }
